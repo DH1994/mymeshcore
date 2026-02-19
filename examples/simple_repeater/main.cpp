@@ -26,6 +26,32 @@ unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled)
 static unsigned long userBtnDownAt = 0;
 #define USER_BTN_HOLD_OFF_MILLIS 1500
 #endif
+#ifdef WATCHDOG
+void ARDUINO_ISR_ATTR resetModule() {
+  Serial.println("reboot\n");
+  esp_restart();
+}
+
+void startTimer() {
+  if (timer == NULL) {
+    timer = timerBegin(0, 80, true); 
+    timerAttachInterrupt(timer, &resetModule, true);       //attach callback
+  }
+
+  timerAlarmWrite(timer, 10000 * 1000, true );
+  yield();
+  timerAlarmEnable(timer);
+}
+
+void stopTimer() {
+  if (timer != NULL) {
+    timerAlarmDisable(timer);
+    timerDetachInterrupt(timer);
+    timerEnd(timer);
+    timer = NULL;
+  }
+}
+#endif //WATCHDOG
 
 void setup() {
   Serial.begin(115200);
