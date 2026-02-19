@@ -35,9 +35,13 @@ static uint32_t _atoi(const char* sp) {
 #endif
 
 #ifdef ESP32
+  #include "esp_ota_ops.h" // Added for always setting first partition, for custom OTA bootloader
   #ifdef WIFI_SSID
     #include <helpers/esp32/SerialWifiInterface.h>
     SerialWifiInterface serial_interface;
+    #ifdef ARDUINO_MQTT
+    MqttInterface mqttInterface(MQTT_HOST, MQTT_PORT);
+    #endif
     #ifndef TCP_PORT
       #define TCP_PORT 5000
     #endif
@@ -85,6 +89,11 @@ static uint32_t _atoi(const char* sp) {
   #error "need to define a serial interface"
 #endif
 
+#ifdef WATCHDOG
+#include "esp32-hal-timer.h"
+hw_timer_t *timer = NULL;
+#endif
+
 /* GLOBAL OBJECTS */
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
@@ -105,13 +114,13 @@ void halt() {
   while (1) ;
 }
 
-/* WIFI RECONNECT TRACKERS */
-#if defined(ESP32) && defined(WIFI_SSID)
-  bool wifi_needs_reconnect = false;
-  unsigned long last_wifi_reconnect_attempt = 0;
+
+#ifdef ESP32
+  const esp_partition_t *part = esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+  esp_ota_set_boot_partition(part);
 #endif
 
-void setup() {
   Serial.begin(115200);
 
   board.begin();
@@ -215,6 +224,20 @@ void setup() {
 
   WiFi.begin(WIFI_SSID, WIFI_PWD);
   serial_interface.begin(TCP_PORT);
+#ifdef ARDUINO_MQTT
+  mqttInterface.setCredential(MQTT_USER, MQTT_PASS);
+  mqttInterface.setWifiClient(serial_interface.getWiFiClient());
+  String topic = "meshcore/channels/";
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+    ChannelDetails c;
+    bool chExist = the_mesh.getChannel(i, c);
+    mqttInterface.setTopic(String(topic) + i + "/send");
+    if (!chExist)
+      break;
+  }
+  mqttInterface.begin();
+  the_mesh.setMqttInterface(mqttInterface);
+#endif // ARDUINO_MQTT
 #elif defined(BLE_PIN_CODE)
   serial_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
 #elif defined(SERIAL_RX)
@@ -249,20 +272,7 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
-
-  if (!the_mesh.hasPendingWork()) {
-#if defined(NRF52_PLATFORM)
-    board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
-#endif
-  }
-
-#if defined(ESP32) && defined(WIFI_SSID)
-  // Safely attempt to reconnect every 10 seconds if flagged
-  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
-    WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
-    WiFi.disconnect();
-    WiFi.reconnect();
-    last_wifi_reconnect_attempt = millis();
-  }
-#endif
+#ifdef WATCHDOG
+  timerWrite(timer, 0);  //reset timer (feed watchdog)
+#endif //WATCHDOG
 }

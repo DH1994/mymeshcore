@@ -565,6 +565,38 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   memcpy(&out_frame[i], text, tlen);
   i += tlen;
   addToOfflineQueue(out_frame, i);
+  
+#ifdef ARDUINO_MQTT
+  Message msg;
+  msg.topic = String("meshcore/channels/") + channel_idx;
+  msg.message = text;
+  _mqtt->pushMsg(msg);
+#endif // ARDUINO_MQTT
+
+#ifdef PIN_COMMAND_ENABLED
+  char *cmdFind = (char *)(text);
+  while (*(cmdFind++) != ':' && cmdFind < text + tlen)
+    ;
+  cmdFind++;
+
+  int a, b;
+  char cmd[20];
+  Serial.println(text);
+  if (sscanf(cmdFind, "%s %d %d", cmd, &a, &b) == 3) {
+    Serial.println(cmdFind);
+    if (strcmp(cmd, "pin") == 0) {
+      digitalWrite(a, b);
+
+      ChannelDetails channelDetails;
+      bool success = getChannel(channel_idx, channelDetails);
+      const char *sendStr = "pin changed!";
+      Serial.println(sendStr);
+      uint32_t tsNow = getRTCClock()->getCurrentTime();
+      sendGroupMessage(tsNow, channelDetails.channel, _prefs.node_name, sendStr,
+                       strlen(sendStr));
+    }
+  }
+#endif // PIN_COMMAND_ENABLED
 
   if (_serial->isConnected()) {
     uint8_t frame[1];
@@ -1004,6 +1036,10 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   _serial = &serial;
   serial.enable();
 }
+
+#ifdef ARDUINO_MQTT
+void MyMesh::setMqttInterface(MqttInterface &mqtt) { _mqtt = &mqtt; }
+#endif //ARDUINO_MQTT
 
 void MyMesh::handleCmdFrame(size_t len) {
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
@@ -2215,6 +2251,27 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
+ #ifdef ARDUINO_MQTT
+  _mqtt->loop();
+
+  if (_mqtt->getMsgCount()) {
+    Message m = _mqtt->getLastMsg();
+    int channel_idx;
+
+    if (sscanf(m.topic.c_str(), "meshcore/channels/%d/send", &channel_idx) ==
+        1) {
+      Serial.println("Send to channel: ");
+      Serial.println(channel_idx);
+      ChannelDetails channelDetails;
+      bool success = getChannel(channel_idx, channelDetails);
+      if (success) {
+        uint32_t tsNow = getRTCClock()->getCurrentTime();
+        sendGroupMessage(tsNow, channelDetails.channel, _prefs.node_name,
+                         m.message.c_str(), m.message.length());
+      }
+    }
+  }
+#endif // ARDUINO_MQTT 
 
   if (_cli_rescue) {
     checkCLIRescueCmd();

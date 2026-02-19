@@ -59,6 +59,11 @@ public:
 
   bool hasReceivedFrameHeader();
   void resetReceivedFrameHeader();
+  WiFiClient getWiFiClient() const;
+
+  inline WiFiClient getWiFiClient() {
+    return client;
+  }
 };
 
 #if WIFI_DEBUG_LOGGING && ARDUINO

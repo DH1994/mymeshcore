@@ -21,6 +21,9 @@
 #include <LittleFS.h>
 #elif defined(ESP32)
 #include <SPIFFS.h>
+#ifdef ARDUINO_MQTT
+#include <helpers/esp32/MqttInterface.h>
+#endif //ARDUINO_MQTT
 #endif
 
 #include "DataStore.h"
@@ -90,6 +93,9 @@ public:
 
   void begin(bool has_display);
   void startInterface(BaseSerialInterface &serial);
+  #ifdef ARDUINO_MQTT
+  void setMqttInterface(MqttInterface &mqtt);
+  #endif //ARDUINO_MQTT
 
   const char *getNodeName();
   NodePrefs *getNodePrefs();
@@ -211,6 +217,9 @@ private:
   uint32_t pending_req;   // pending _BINARY_REQ
   BaseSerialInterface *_serial;
   AbstractUITask* _ui;
+  #ifdef ARDUINO_MQTT
+  MqttInterface* _mqtt;
+  #endif //ARDUINO_MQTT
 
   ContactsIterator _iter;
   uint32_t _iter_filter_since;
