@@ -332,7 +332,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Serial Only:**
 - `get prv.key`: Yes
-- `set prv.key`: No
+- `set prv.key`: Yes
 
 **Note:** Requires reboot to take effect after setting
 
