@@ -114,13 +114,18 @@ void halt() {
   while (1) ;
 }
 
+/* WIFI RECONNECT TRACKERS */
+#if defined(ESP32) && defined(WIFI_SSID)
+  bool wifi_needs_reconnect = false;
+  unsigned long last_wifi_reconnect_attempt = 0;
+#endif
 
+void setup() {
 #ifdef ESP32
   const esp_partition_t *part = esp_partition_find_first(
       ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
   esp_ota_set_boot_partition(part);
 #endif
-
   Serial.begin(115200);
 
   board.begin();
@@ -272,7 +277,19 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
-#ifdef WATCHDOG
-  timerWrite(timer, 0);  //reset timer (feed watchdog)
-#endif //WATCHDOG
+  if (!the_mesh.hasPendingWork()) {
+#if defined(NRF52_PLATFORM)
+    board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
+#endif
+  }
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  // Safely attempt to reconnect every 10 seconds if flagged
+  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+    WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    last_wifi_reconnect_attempt = millis();
+  }
+#endif`
 }
